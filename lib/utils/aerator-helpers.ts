@@ -8,11 +8,7 @@ export function getAeratorDescription(value: string | number): string {
   // Convert to string and clean up
   const stringValue = String(value).trim()
 
-  // If it's just a number (like "1"), return a generic description
-  if (/^\d+$/.test(stringValue)) {
-    return `Aerator (${stringValue})`
-  }
-
+  // Return the actual value as-is (like "1.0 gpm", "2.5 gpm", etc.)
   return stringValue
 }
 
