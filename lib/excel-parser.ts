@@ -24,21 +24,34 @@ export function parseExcelFile(file: File): Promise<InstallationData[]> {
 
         console.log("All column names:", columnNames)
 
-        // Auto-detect column mappings
+        // Auto-detect column mappings with flexible matching
         const columnMappings = detectColumnMappings(columnNames)
         console.log("Detected column mappings:", columnMappings)
 
-        const installationData: InstallationData[] = jsonData.map((row: any) => ({
-          apartment: getColumnValue(row, columnMappings.apartment) || "",
-          existingKitchenAerator: getColumnValue(row, columnMappings.existingKitchen) || "",
-          installedKitchenAerator: getColumnValue(row, columnMappings.installedKitchen) || "",
-          existingBathroomAerator: getColumnValue(row, columnMappings.existingBathroom) || "",
-          installedBathroomAerator: getColumnValue(row, columnMappings.installedBathroom) || "",
-          existingShower: getColumnValue(row, columnMappings.existingShower) || "",
-          installedShower: getColumnValue(row, columnMappings.installedShower) || "",
-          toiletInstalled: getColumnValue(row, columnMappings.toiletInstalled) || "",
-          notes: getColumnValue(row, columnMappings.notes) || "",
-        }))
+        const installationData: InstallationData[] = jsonData.map((row: any) => {
+          const apartment = getColumnValue(row, columnMappings.apartment) || ""
+
+          // Handle kitchen data - could be existing/installed separate columns OR single installation column
+          const kitchenData = extractInstallationData(row, columnMappings.kitchen)
+
+          // Handle bathroom data - could be existing/installed separate columns OR single installation column
+          const bathroomData = extractInstallationData(row, columnMappings.bathroom)
+
+          // Handle shower data - could be existing/installed separate columns OR single installation column
+          const showerData = extractInstallationData(row, columnMappings.shower)
+
+          return {
+            apartment,
+            existingKitchenAerator: kitchenData.existing || "",
+            installedKitchenAerator: kitchenData.installed || "",
+            existingBathroomAerator: bathroomData.existing || "",
+            installedBathroomAerator: bathroomData.installed || "",
+            existingShower: showerData.existing || "",
+            installedShower: showerData.installed || "",
+            toiletInstalled: getColumnValue(row, columnMappings.toilet) || "",
+            notes: getColumnValue(row, columnMappings.notes) || "",
+          }
+        })
 
         // Filter out empty rows
         const filteredData = installationData.filter((item) => item.apartment && item.apartment.trim() !== "")
@@ -58,52 +71,17 @@ export function parseExcelFile(file: File): Promise<InstallationData[]> {
 
 function detectColumnMappings(columnNames: string[]): Record<string, string[]> {
   const mappings = {
-    apartment: findMatchingColumns(columnNames, ["apt", "apartment", "unit", "apt#", "unit#"]),
-    existingKitchen: findMatchingColumns(columnNames, [
-      "existing kitchen",
-      "kitchen existing",
-      "existing kitchen aerator",
-      "kitchen aerator existing",
-    ]),
-    installedKitchen: findMatchingColumns(columnNames, [
-      "kitchen installed",
-      "installed kitchen",
-      "kitchen aerator installed",
-      "kitchen aerator",
-      "kitchen install",
-    ]),
-    existingBathroom: findMatchingColumns(columnNames, [
-      "existing bathroom",
-      "bathroom existing",
-      "existing bathroom aerator",
-      "bathroom aerator existing",
-    ]),
-    installedBathroom: findMatchingColumns(columnNames, [
-      "bathroom installed",
-      "installed bathroom",
-      "bathroom aerator installed",
+    apartment: findMatchingColumns(columnNames, ["unit", "apt", "apartment", "apt#", "unit#", "room"]),
+    kitchen: findMatchingColumns(columnNames, ["kitchen", "kitchen aerator", "kitchen faucet", "faucet kitchen"]),
+    bathroom: findMatchingColumns(columnNames, [
+      "bathroom",
       "bathroom aerator",
-      "bathroom install",
+      "bath aerator",
+      "bathroom faucet",
+      "bath faucet",
     ]),
-    existingShower: findMatchingColumns(columnNames, [
-      "existing shower",
-      "shower existing",
-      "existing shower head",
-      "shower head existing",
-    ]),
-    installedShower: findMatchingColumns(columnNames, [
-      "shower installed",
-      "installed shower",
-      "shower head installed",
-      "shower head",
-      "shower install",
-    ]),
-    toiletInstalled: findMatchingColumns(columnNames, [
-      "toilet installed",
-      "installed toilet",
-      "toilet install",
-      "toilet",
-    ]),
+    shower: findMatchingColumns(columnNames, ["shower", "shower head", "showerhead", "shower aerator"]),
+    toilet: findMatchingColumns(columnNames, ["toilet", "toilets installed", "toilet installed", "toilet install"]),
     notes: findMatchingColumns(columnNames, ["notes", "note", "comments", "comment", "remarks"]),
   }
 
@@ -127,6 +105,76 @@ function findMatchingColumns(columnNames: string[], searchTerms: string[]): stri
   }
 
   return matches
+}
+
+function extractInstallationData(
+  row: Record<string, any>,
+  possibleColumns: string[],
+): {
+  existing: string
+  installed: string
+} {
+  // Try to find separate existing/installed columns first
+  const existingColumns = possibleColumns.filter(
+    (col) => col.toLowerCase().includes("existing") || col.toLowerCase().includes("current"),
+  )
+  const installedColumns = possibleColumns.filter(
+    (col) =>
+      col.toLowerCase().includes("installed") ||
+      col.toLowerCase().includes("install") ||
+      col.toLowerCase().includes("new"),
+  )
+
+  let existing = ""
+  let installed = ""
+
+  // If we have separate existing/installed columns
+  if (existingColumns.length > 0) {
+    existing = getColumnValue(row, existingColumns)
+  }
+  if (installedColumns.length > 0) {
+    installed = getColumnValue(row, installedColumns)
+  }
+
+  // If no separate columns found, treat any matching column as installation data
+  if (!existing && !installed && possibleColumns.length > 0) {
+    const value = getColumnValue(row, possibleColumns)
+
+    // Determine if this represents an installation based on the value
+    if (value && isInstallationValue(value)) {
+      installed = value
+      existing = "Existing" // Default existing value
+    } else if (value) {
+      existing = value
+      installed = "No Touch"
+    }
+  }
+
+  return { existing, installed }
+}
+
+function isInstallationValue(value: string): boolean {
+  if (!value || value.trim() === "") return false
+
+  const normalizedValue = value.toLowerCase().trim()
+
+  // Values that indicate an installation occurred
+  const installationIndicators = [
+    "insert",
+    "male",
+    "female",
+    "installed",
+    "new",
+    "replaced",
+    "1.5",
+    "2.0",
+    "2.5",
+    "gpm",
+    "low flow",
+    "high efficiency",
+  ]
+
+  return installationIndicators.some((indicator) => normalizedValue.includes(indicator))
 }
 
 function getColumnValue(row: Record<string, any>, possibleColumns: string[]): string {
