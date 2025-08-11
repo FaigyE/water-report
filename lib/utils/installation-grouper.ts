@@ -46,7 +46,8 @@ function groupAndCount(items: InstallationData[], field: keyof InstallationData)
 
   items.forEach((item) => {
     const value = item[field] as string
-    if (value && value.trim() && value !== "No Touch") {
+    // Only count actual installation values, not "No Touch" or empty values
+    if (value && value.trim() && value !== "No Touch" && value !== "Existing" && value !== "") {
       counts[value] = (counts[value] || 0) + 1
     }
   })
