@@ -140,14 +140,19 @@ function extractInstallationData(
   if (!existing && !installed && possibleColumns.length > 0) {
     const value = getColumnValue(row, possibleColumns)
 
-    // Determine if this represents an installation based on the value
-    if (value && isInstallationValue(value)) {
-      installed = value
-      existing = "Existing" // Default existing value
-    } else if (value) {
-      existing = value
+    // For your Excel format, if there's a value, it represents an installation
+    if (value && value.trim() !== "" && value !== "0") {
+      installed = value // Use the actual value (Insert, Male, Female, etc.)
+      existing = "" // No existing data in this format
+    } else {
       installed = "No Touch"
+      existing = ""
     }
+  }
+
+  // If we still don't have installation data, default to "No Touch"
+  if (!installed) {
+    installed = "No Touch"
   }
 
   return { existing, installed }
@@ -158,23 +163,8 @@ function isInstallationValue(value: string): boolean {
 
   const normalizedValue = value.toLowerCase().trim()
 
-  // Values that indicate an installation occurred
-  const installationIndicators = [
-    "insert",
-    "male",
-    "female",
-    "installed",
-    "new",
-    "replaced",
-    "1.5",
-    "2.0",
-    "2.5",
-    "gpm",
-    "low flow",
-    "high efficiency",
-  ]
-
-  return installationIndicators.some((indicator) => normalizedValue.includes(indicator))
+  // Empty values or "0" mean no installation
+  return normalizedValue !== "0" && normalizedValue !== "" && normalizedValue !== "null"
 }
 
 function getColumnValue(row: Record<string, any>, possibleColumns: string[]): string {
