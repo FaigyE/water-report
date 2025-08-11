@@ -8,46 +8,87 @@ export interface GroupedInstallationData
 }
 
 export function groupInstallationsByUnit(data: InstallationData[]): GroupedInstallationData[] {
-  // Group data by apartment unit
-  const groupedByApt = data.reduce(
-    (acc, item) => {
-      if (!acc[item.apartment]) {
-        acc[item.apartment] = []
-      }
-      acc[item.apartment].push(item)
-      return acc
-    },
-    {} as Record<string, InstallationData[]>,
-  )
+  console.log("groupInstallationsByUnit called with data length:", data?.length)
 
-  // Process each apartment unit
-  return Object.entries(groupedByApt).map(([apartment, items]) => {
-    // Group and count each installation type
-    const kitchenAerators = groupAndCount(items, "installedKitchenAerator")
-    const bathroomAerators = groupAndCount(items, "installedBathroomAerator")
-    const showers = groupAndCount(items, "installedShower")
+  if (!data || !Array.isArray(data) || data.length === 0) {
+    console.log("No data provided to groupInstallationsByUnit")
+    return []
+  }
 
-    // Take the first item as base and override with grouped data
-    const baseItem = items[0]
+  try {
+    // Group data by apartment unit
+    const groupedByApt = data.reduce(
+      (acc, item) => {
+        if (!item || !item.apartment || typeof item.apartment !== "string") {
+          console.log("Skipping invalid item:", item)
+          return acc
+        }
 
-    return {
-      ...baseItem,
-      installedKitchenAerator: formatInstallationDisplay(kitchenAerators),
-      installedBathroomAerator: formatInstallationDisplay(bathroomAerators),
-      installedShower: formatInstallationDisplay(showers),
-      // Combine notes from all items for this apartment
-      notes: combineNotes(items),
-    }
-  })
+        if (!acc[item.apartment]) {
+          acc[item.apartment] = []
+        }
+        acc[item.apartment].push(item)
+        return acc
+      },
+      {} as Record<string, InstallationData[]>,
+    )
+
+    console.log("Grouped by apartment:", Object.keys(groupedByApt).length, "units")
+
+    // Process each apartment unit
+    const result = Object.entries(groupedByApt)
+      .map(([apartment, items]) => {
+        if (!items || items.length === 0) {
+          return null
+        }
+
+        // Group and count each installation type
+        const kitchenAerators = groupAndCount(items, "installedKitchenAerator")
+        const bathroomAerators = groupAndCount(items, "installedBathroomAerator")
+        const showers = groupAndCount(items, "installedShower")
+
+        // Take the first item as base and override with grouped data
+        const baseItem = items[0]
+
+        return {
+          ...baseItem,
+          installedKitchenAerator: formatInstallationDisplay(kitchenAerators),
+          installedBathroomAerator: formatInstallationDisplay(bathroomAerators),
+          installedShower: formatInstallationDisplay(showers),
+          // Combine notes from all items for this apartment
+          notes: combineNotes(items),
+        }
+      })
+      .filter(Boolean) as GroupedInstallationData[]
+
+    console.log("Final grouped result length:", result.length)
+    return result
+  } catch (error) {
+    console.error("Error in groupInstallationsByUnit:", error)
+    return []
+  }
 }
 
 function groupAndCount(items: InstallationData[], field: keyof InstallationData): Record<string, number> {
   const counts: Record<string, number> = {}
 
+  if (!items || !Array.isArray(items)) {
+    return counts
+  }
+
   items.forEach((item) => {
+    if (!item) return
+
     const value = item[field] as string
     // Only count actual installation values, not "No Touch" or empty values
-    if (value && value.trim() && value !== "No Touch" && value !== "Existing" && value !== "") {
+    if (
+      value &&
+      typeof value === "string" &&
+      value.trim() &&
+      value !== "No Touch" &&
+      value !== "Existing" &&
+      value !== ""
+    ) {
       counts[value] = (counts[value] || 0) + 1
     }
   })
@@ -74,10 +115,14 @@ function formatInstallationDisplay(itemCounts: Record<string, number>): string {
 }
 
 function combineNotes(items: InstallationData[]): string {
+  if (!items || !Array.isArray(items)) {
+    return ""
+  }
+
   // Get unique notes and combine them
   const notes = items
-    .map((item) => item.notes)
-    .filter((note) => note && note.trim())
+    .map((item) => item?.notes)
+    .filter((note) => note && typeof note === "string" && note.trim())
     .filter((note, index, arr) => arr.indexOf(note) === index) // Remove duplicates
 
   return notes.join(" ")
@@ -85,7 +130,7 @@ function combineNotes(items: InstallationData[]): string {
 
 // Helper function to update toilet replacement text based on quantity
 export function updateToiletReplacementText(notes: string, bathroomCount: number): string {
-  if (!notes) return notes
+  if (!notes || typeof notes !== "string") return ""
 
   // Replace toilet replacement text based on bathroom count
   if (bathroomCount > 1) {
